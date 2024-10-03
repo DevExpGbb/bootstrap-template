@@ -1,0 +1,39 @@
+name: Deploy an Azure Service
+description: Deploy an Azure Service
+title: "[Self Serve New Azure Deployment]: "
+labels: ["demo", "deploy"]
+assignees:
+  - octocat
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is an example form to deploy an Azure App Service Instance
+  - type: input
+    id: servicename
+    attributes:
+      label: servicename
+      description: Name of your new App Service Instance
+      placeholder: e.g. demo-app-001
+    validations:
+      required: true
+  - type: dropdown
+    id: location
+    attributes:
+      label: Location
+      description: Location to deploy the App Service Instance
+      options:
+        - canadacentral
+        - canadaeast
+        - eastus
+      default: 0
+    validations:
+      required: true
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our [Code of Conduct](https://example.com). 
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true

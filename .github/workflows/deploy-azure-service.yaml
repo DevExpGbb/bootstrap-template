@@ -1,0 +1,106 @@
+name: Create Environment when Issue is Opened
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+
+env:
+  TF_VAR_tags: '{"team": "gbb"}'
+  ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+  ARM_USE_OIDC: true
+
+jobs:
+  create-environment:
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+    - name: 'Az CLI login with Workload Identity Federation'
+      uses: Azure/login@v2.2.0
+      with:
+        client-id: ${{ secrets.ARM_CLIENT_ID }}
+        tenant-id: ${{ secrets.ARM_TENANT_ID }}
+        subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+    - name: 'Validate Workload Identity Auth Works'
+      run: |
+        az account show
+        az group list
+    - name: Issue Forms Body Parser
+      id: parse
+      uses: zentered/issue-forms-body-parser@v2.0.0
+    
+    - name: Show parsed payload data
+      run: |
+        # Using the character `'` to prevent all characters enclosed within
+        # them from being treated as special characters (e.g. $ or `)
+        echo ${{ toJSON(steps.parse.outputs.data) }}
+
+    - name: Extract extract service name and location from parsed JSON
+      id: extract
+      run: |
+        echo "TF_VAR_location=$(echo ${{ toJSON(steps.parse.outputs.data) }} | jq -r '.location.text')" >> $GITHUB_ENV
+        echo "TF_VAR_service_name=$(echo ${{ toJSON(steps.parse.outputs.data) }} | jq -r '.servicename.text')" >> $GITHUB_ENV
+
+    - name: Set the username from GitHub issue trigger for tagging
+      id: tags
+      run: |
+        # Extract the GitHub username of the person who triggered the event
+        USERNAME="${{ github.event.issue.user.login }}"
+        
+        # Update the dynamic tags by adding/overwriting the "username" tag
+        echo "TF_VAR_tags=$(echo $TF_VAR_tags | jq --arg user $USERNAME -c '. + {username: $user}')" >> $GITHUB_ENV
+  
+    - uses: actions/checkout@v4
+
+    - name: 'Terraform: Init'
+      working-directory: ./terraform/
+      env:
+        TF_BACKEND_STORAGE_RESOURCE_GROUP_NAME: ${{ secrets.TF_STATE_STORAGE_ACCOUNT_RESOURCE_GROUP_NAME }}
+        TF_BACKEND_STORAGE_ACCOUNT_NAME: ${{ secrets.TF_STATE_STORAGE_ACCOUNT_NAME }}
+        TF_BACKEND_STORAGE_CONTAINER_NAME: ${{ secrets.TF_STATE_STORAGE_CONTAINER_NAME }}
+
+      run: |
+        terraform init \
+          -backend-config="resource_group_name=$TF_BACKEND_STORAGE_RESOURCE_GROUP_NAME" \
+          -backend-config="storage_account_name=$TF_BACKEND_STORAGE_ACCOUNT_NAME" \
+          -backend-config="container_name=$TF_BACKEND_STORAGE_CONTAINER_NAME" \
+          -backend-config="key=${{ env.TF_VAR_service_name }}.tfstate"
+
+    - name: 'Terraform: Plan'
+      working-directory: ./terraform/
+      env:
+        TF_VAR_subscription_id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+
+      run: |
+        echo $TF_VAR_service_name
+        echo $TF_VAR_location
+        terraform plan -out tfplan
+      
+    - name: 'Terraform: Apply'
+      working-directory: ./terraform/
+      run: terraform apply tfplan
+
+    - name: Create success comment
+      uses: peter-evans/create-or-update-comment@v4
+      if: success()
+      with:
+        issue-number: ${{ github.event.issue.number }}
+        body: |
+          SUCCESS: The deployment succeeded to apply via Terraform.
+          Run [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}) to see the logs.
+    
+    - name: Create failure comment
+      uses: peter-evans/create-or-update-comment@v4
+      if: failure()
+      with:
+        issue-number: ${{ github.event.issue.number }}
+        body: |
+          FAILURE: The deployment failed to apply via Terraform.
+          Run [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}) to see the logs.
