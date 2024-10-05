@@ -15,4 +15,6 @@ TF_STATE_STORAGE_CONTAINER_NAME
 > Environments and Worflow templates: the example workflows in this repository template have a hard coded environment of "```demo```" and as such may differ from the environment name entered for your provisioned target bootstrap environment.
 
 > [!NOTE]  
-> The target bootstrap environment is created via Terraform and has the protection rule "```Prevent self-review```" disabled for demo purposes (allows you to self approve a deployment).  Enable it for non-demo "best practice" security reasons.  See screenshot below.
+> The target bootstrap environment is created via Terraform and has the protection rule "```Prevent self-review```" disabled for demo purposes, allow you to self-approve a deployment.  In a GitHub Enterprise setting an Administrator can not by-pass this rule (see: [Allow administrators to bypass configured protection rules](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-deployments/managing-environments-for-deployment#allow-administrators-to-bypass-configured-protection-rules)).  Enable it for non-demo "best practice" security reasons.  See screenshot below.  
+
+![Prevent Self-Review](img/prevent-self-review.png)
