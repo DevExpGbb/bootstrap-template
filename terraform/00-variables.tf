@@ -19,3 +19,7 @@ variable "tags" {
   type        = map(string)
   default = {}
 }
+
+variable "gh_username" {
+  description = "value of the GitHub username.  Used for naming and tagging"
+}
