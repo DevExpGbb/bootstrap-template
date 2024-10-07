@@ -2,7 +2,9 @@ name: Create Environment when Issue is Opened
 
 on:
   issues:
-    types: [opened]
+    types:
+      - opened
+      - reopened
 
 permissions:
   id-token: write
@@ -18,8 +20,10 @@ env:
 
 jobs:
   create-environment:
+    if: |
+      !github.event.issue.pull_request && (contains(github.event.issue.labels.*.name, 'demo') && contains(github.event.issue.labels.*.name, 'deploy'))
     runs-on: ubuntu-latest
-    environment: dev
+    environment: demo
 
     steps:
     - name: 'Az CLI login with Workload Identity Federation'
@@ -47,12 +51,23 @@ jobs:
       run: |
         echo "TF_VAR_location=$(echo ${{ toJSON(steps.parse.outputs.data) }} | jq -r '.location.text')" >> $GITHUB_ENV
         echo "TF_VAR_service_name=$(echo ${{ toJSON(steps.parse.outputs.data) }} | jq -r '.servicename.text')" >> $GITHUB_ENV
+    
+    - name: Get GitHub Username who triggered the event
+      id: get-gh-username
+      run: |
+        USERNAME="${{ github.event.issue.user.login }}"
+        echo "gh_username=$USERNAME" >> $GITHUB_OUTPUT
+    
+    - name: Export GH Username for use in Terraform
+      id: export-gh-username
+      run: |
+        echo "TF_VAR_gh_username=${{ steps.get-gh-username.outputs.gh_username }}" >> $GITHUB_ENV
 
     - name: Set the username from GitHub issue trigger for tagging
-      id: tags
+      id: generate-tf-tags
       run: |
         # Extract the GitHub username of the person who triggered the event
-        USERNAME="${{ github.event.issue.user.login }}"
+        USERNAME="${{ steps.get-gh-username.outputs.gh_username }}"
         
         # Update the dynamic tags by adding/overwriting the "username" tag
         echo "TF_VAR_tags=$(echo $TF_VAR_tags | jq --arg user $USERNAME -c '. + {username: $user}')" >> $GITHUB_ENV
