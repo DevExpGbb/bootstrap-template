@@ -18,9 +18,15 @@ provider "azurerm" {
 }
 
 locals {
-  default_tags = {}
+  default_tags = {
+    "owner" = var.gh_username
+    "service" = var.service_name
+  }
   tags = merge(
     local.default_tags,
     var.tags
   )
+  service_name = lower("${var.gh_username}-${var.service_name}")
+  service_name_safe = replace(local.service_name, "-", "")
+  service_name_short = substr(local.service_name_safe, 0, 24)
 }
