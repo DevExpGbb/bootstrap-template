@@ -26,8 +26,12 @@ env:
 jobs:
   destroy-environment:
     if: |
-      contains(github.event.issue.labels.*.name, 'demo') &&
-      contains(github.event.issue.labels.*.name, 'deploy')
+      !github.event.issue.pull_request &&
+      (
+        contains(github.event.issue.labels.*.name, 'demo') &&
+        contains(github.event.issue.labels.*.name, 'deploy') &&
+        contains(github.event.issue.labels.*.name, 'deploy')
+      )
     runs-on: ubuntu-latest
     environment: demo
 
