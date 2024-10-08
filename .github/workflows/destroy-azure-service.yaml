@@ -9,8 +9,25 @@ permissions:
   contents: read
   issues: write
 
+env:
+  TF_VAR_tags: '{"team": "gbb"}'
+  ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+  ARM_USE_OIDC: true
+  TF_VAR_subscription_id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+  TF_VAR_BACKEND_STORAGE_RESOURCE_GROUP_NAME: ${{ secrets.TF_STATE_STORAGE_ACCOUNT_RESOURCE_GROUP_NAME }}
+  TF_VAR_BACKEND_STORAGE_ACCOUNT_NAME: ${{ secrets.TF_STATE_STORAGE_ACCOUNT_NAME }}
+  TF_VAR_BACKEND_STORAGE_CONTAINER_NAME: ${{ secrets.TF_STATE_STORAGE_CONTAINER_NAME }}
+  tf_version: '1.9.7'
+  tg_version: '0.67.16'
+  working_dir: 'terraform'
+
 jobs:
   destroy-environment:
+    if: |
+      contains(github.event.issue.labels.*.name, 'demo') &&
+      contains(github.event.issue.labels.*.name, 'deploy')
     runs-on: ubuntu-latest
     environment: demo
 
@@ -40,38 +57,36 @@ jobs:
       run: |
         echo "TF_VAR_location=$(echo ${{ toJSON(steps.parse.outputs.data) }} | jq -r '.location.text')" >> $GITHUB_OUTPUT
         echo "TF_VAR_service_name=$(echo ${{ toJSON(steps.parse.outputs.data) }} | jq -r '.servicename.text')" >> $GITHUB_ENV
-
+    
+    - name: Get GitHub Username who triggered the event
+      id: get-gh-username
+      run: |
+        USERNAME="${{ github.event.issue.user.login }}"
+        echo "gh_username=$USERNAME" >> $GITHUB_OUTPUT
+    
+    - name: Export GH Username for use in Terraform
+      id: export-gh-username
+      run: |
+        echo "TF_VAR_gh_username=${{ steps.get-gh-username.outputs.gh_username }}" >> $GITHUB_ENV
+    
+    - name: Set the username from GitHub issue trigger for tagging
+      id: generate-tf-tags
+      run: |
+        # Extract the GitHub username of the person who triggered the event
+        USERNAME="${{ steps.get-gh-username.outputs.gh_username }}"
+        
+        # Update the dynamic tags by adding/overwriting the "username" tag
+        echo "TF_VAR_tags=$(echo $TF_VAR_tags | jq --arg user $USERNAME -c '. + {username: $user}')" >> $GITHUB_ENV
 
     - uses: actions/checkout@v4
 
-    - name: 'Terraform: Init'
-      working-directory: ./terraform/
-      env:
-        ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-        ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-        ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-        ARM_USE_OIDC: true
-        TF_BACKEND_STORAGE_RESOURCE_GROUP_NAME: ${{ secrets.TF_STATE_STORAGE_ACCOUNT_RESOURCE_GROUP_NAME }}
-        TF_BACKEND_STORAGE_ACCOUNT_NAME: ${{ secrets.TF_STATE_STORAGE_ACCOUNT_NAME }}
-        TF_BACKEND_STORAGE_CONTAINER_NAME: ${{ secrets.TF_STATE_STORAGE_CONTAINER_NAME }}
-        TF_VAR_service_name: ${{ env.TF_VAR_service_name}}
-
-      run: |
-        terraform init \
-          -backend-config="resource_group_name=$TF_BACKEND_STORAGE_RESOURCE_GROUP_NAME" \
-          -backend-config="storage_account_name=$TF_BACKEND_STORAGE_ACCOUNT_NAME" \
-          -backend-config="container_name=$TF_BACKEND_STORAGE_CONTAINER_NAME" \
-          -backend-config="key=${{ env.TF_VAR_service_name }}.tfstate"
-
-    - name: 'Terraform: Destroy'
-      working-directory: ./terraform/
-      env:
-        ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-        ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-        ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-        ARM_USE_OIDC: true
-        TF_VAR_subscription_id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-      run: terraform destroy -auto-approve
+    - name: "Terragrunt Apply"
+      uses: gruntwork-io/terragrunt-action@v2
+      with:
+        tf_version: ${{ env.tf_version }}
+        tg_version: ${{ env.tg_version }}
+        tg_dir: ${{ env.working_dir }}
+        tg_command: 'destroy'
     
     - name: Destroy success comment
       uses: peter-evans/create-or-update-comment@v4
